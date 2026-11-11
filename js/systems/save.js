@@ -1,4 +1,6 @@
 // 存档系统
+const SAVE_VERSION = '1.5';
+
 export class SaveSystem {
   constructor(gameState) {
     this.gameState = gameState;
@@ -8,7 +10,7 @@ export class SaveSystem {
   // 保存游戏
   save(slot = 'auto') {
     const saveData = {
-      version: '1.5',
+      version: SAVE_VERSION,
       timestamp: Date.now(),
       slot,
       data: JSON.parse(JSON.stringify(this.gameState))
@@ -31,7 +33,10 @@ export class SaveSystem {
       }
 
       const saveData = JSON.parse(raw);
-      if (saveData.version !== '1.0') {
+      // 只比较主版本号，避免小版本升级后旧档读不出来
+      const majorOld = String(saveData.version || '0').split('.')[0];
+      const majorNow = SAVE_VERSION.split('.')[0];
+      if (majorOld !== majorNow) {
         return { success: false, text: '存档版本不兼容' };
       }
 
@@ -54,7 +59,7 @@ export class SaveSystem {
           saves.push({
             slot: data.slot,
             timestamp: data.timestamp,
-            player: data.data.player
+            player: data.data && data.data.player
           });
         } catch (e) {
           // 忽略损坏的存档
@@ -74,9 +79,19 @@ export class SaveSystem {
     }
   }
 
-  // 导出存档
+  // 导出存档（导出完整存档对象，含 data）
   exportSave() {
-    const saves = this.getSaves();
+    const saves = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith(this.saveKey)) {
+        try {
+          saves.push(JSON.parse(localStorage.getItem(key)));
+        } catch (e) {
+          // 忽略损坏的存档
+        }
+      }
+    }
     const exportData = JSON.stringify(saves, null, 2);
     const blob = new Blob([exportData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -99,10 +114,10 @@ export class SaveSystem {
           const saves = JSON.parse(e.target.result);
           saves.forEach(save => {
             localStorage.setItem(`${this.saveKey}_${save.slot}`, JSON.stringify({
-              version: '1.5',
+              version: SAVE_VERSION,
               timestamp: save.timestamp,
               slot: save.slot,
-              data: save.player
+              data: save.data || save.player
             }));
           });
           resolve({ success: true, text: '导入成功' });
